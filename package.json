@@ -1,0 +1,19 @@
+{
+  "name": "process-videos",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "process": "tsx src/process.ts",
+    "upload": "tsx src/upload.ts",
+    "test": "tsx src/test.ts",
+    "all": "tsx src/all.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "googleapis": "^146.0.0"
+  }
+}

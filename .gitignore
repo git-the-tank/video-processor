@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.claude/
+
+# OAuth credentials
+client_secret.json
+token.json
+
+# Upload tracking
+uploaded.json
+channel.json
+
+# Video files — keep folders but not contents
+input/*
+!input/.gitkeep
+output/*
+!output/.gitkeep
