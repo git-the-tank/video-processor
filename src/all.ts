@@ -13,7 +13,13 @@ import {
   generateDescription,
 } from "./parse-filename.js";
 import { createProgressTracker } from "./upload-progress.js";
-import { setEncode, setUpload, startStatus, clearStatus, log } from "./status-line.js";
+import {
+  initDashboard,
+  updateEncode,
+  updateUpload,
+  stopDashboard,
+  type FileEntry,
+} from "./dashboard.js";
 
 const INPUT_DIR = path.resolve("input");
 const OUTPUT_DIR = path.resolve("output");
@@ -66,7 +72,11 @@ async function loadUploaded(): Promise<UploadRecord> {
 
 // --- ffmpeg ---
 
-function runFfmpeg(inputPath: string, outputPath: string): Promise<void> {
+function runFfmpeg(
+  inputPath: string,
+  outputPath: string,
+  onProgress: (progress: string) => void
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const args = [
       "-i", inputPath,
@@ -91,12 +101,11 @@ function runFfmpeg(inputPath: string, outputPath: string): Promise<void> {
         const speedMatch = line.match(/speed=(\S+)/);
         const time = timeMatch?.[1] ?? "?";
         const speed = speedMatch?.[1] ?? "?";
-        setEncode(`encode ${time} @ ${speed}`);
+        onProgress(`${time} @ ${speed}`);
       }
     });
 
     proc.on("close", (code) => {
-      setEncode("");
       if (code === 0) resolve();
       else reject(new Error(`ffmpeg exited with code ${code}`));
     });
@@ -217,8 +226,9 @@ async function uploadFile(
   filePath: string,
   outputName: string,
   config: Config,
-  uploaded: UploadRecord
-): Promise<void> {
+  uploaded: UploadRecord,
+  onProgress: (pct: number, speed: string, eta: string) => void
+): Promise<string> {
   const meta = parseFilename(outputName);
   let title: string;
   let description: string;
@@ -230,9 +240,6 @@ async function uploadFile(
     title = path.basename(outputName, ".mp4");
     description = "";
   }
-
-  log(`  [upload] ${title}`);
-  setUpload("upload starting...");
 
   const fileSize = (await stat(filePath)).size;
   const res = await youtube.videos.insert(
@@ -255,10 +262,9 @@ async function uploadFile(
       },
     },
     {
-      onUploadProgress: createProgressTracker(fileSize),
+      onUploadProgress: createProgressTracker(fileSize, onProgress),
     }
   );
-  setUpload("");
   const videoId = res.data.id!;
 
   if (config.playlistId) {
@@ -275,7 +281,7 @@ async function uploadFile(
 
   uploaded[outputName] = { videoId, uploadedAt: new Date().toISOString() };
   await saveJson(UPLOADED_PATH, uploaded);
-  log(`  Uploaded: https://youtu.be/${videoId}`);
+  return videoId;
 }
 
 // --- Main pipeline ---
@@ -339,39 +345,60 @@ async function main() {
     return;
   }
 
+  console.log(`  Source:  3840x1600 @ 60fps`);
+  console.log(`  Crop:    2844x1600 (offset 498:0)`);
+  console.log(`  Scale:   2560x1440 (1440p)`);
+  console.log("");
+
   const encodeCount = work.filter((w) => w.needsEncode).length;
   const uploadCount = work.filter((w) => w.needsUpload).length;
-  console.log(`Pipeline: ${work.length} file(s) — ${encodeCount} to encode, ${uploadCount} to upload\n`);
+  const header = `Pipeline: ${work.length} file(s) — ${encodeCount} to encode, ${uploadCount} to upload`;
 
-  startStatus();
-  let pendingUpload: Promise<void> | null = null;
-  let processedCount = 0;
-
-  for (const item of work) {
-    processedCount++;
-    const label = `[${processedCount}/${work.length}]`;
+  const fileEntries: FileEntry[] = work.map((item) => {
     const meta = parseFilename(item.inputFile);
     const displayName = meta
       ? `${meta.difficulty} ${meta.encounterName} (${meta.result})`
       : item.inputFile;
+    return {
+      displayName,
+      encode: item.needsEncode ? { status: "pending" } : { status: "skipped" },
+      upload: !item.needsUpload
+        ? { status: "skipped" }
+        : youtube
+          ? { status: "pending" }
+          : { status: "not-applicable" },
+    };
+  });
 
-    log(`${label} ${displayName}`);
+  initDashboard(fileEntries, header);
+
+  let pendingUpload: Promise<void> | null = null;
+
+  for (let i = 0; i < work.length; i++) {
+    const item = work[i];
 
     // Encode if needed
     if (item.needsEncode) {
+      updateEncode(i, { status: "active", progress: "starting..." });
       const start = Date.now();
       const tmpPath = item.outputPath + ".tmp.mp4";
       try {
-        await runFfmpeg(item.inputPath, tmpPath);
+        await runFfmpeg(item.inputPath, tmpPath, (progress) => {
+          updateEncode(i, { status: "active", progress });
+        });
         await rename(tmpPath, item.outputPath);
-      } catch (err) {
+        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+        updateEncode(i, { status: "done", elapsed: `${elapsed}s` });
+      } catch (err: any) {
         await unlink(tmpPath).catch(() => {});
-        throw err;
+        updateEncode(i, { status: "error", message: err.message });
+        continue;
       }
-      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-      log(`  Encoded in ${elapsed}s`);
-    } else {
-      log(`  Already encoded`);
+    }
+
+    // Mark upload as queued if applicable
+    if (item.needsUpload && youtube) {
+      updateUpload(i, { status: "queued" });
     }
 
     // Wait for any previous upload to finish before starting the next one
@@ -382,13 +409,21 @@ async function main() {
 
     // Start upload in background (runs while next encode happens)
     if (item.needsUpload && youtube) {
-      pendingUpload = uploadFile(youtube, item.outputPath, item.outputName, config, uploaded)
-        .catch((err) => log(`  Upload error: ${err.message}`));
-    } else if (!item.needsUpload) {
-      log(`  Already uploaded`);
+      const idx = i;
+      const uploadStart = Date.now();
+      updateUpload(idx, { status: "active", pct: 0, speed: "---", eta: "---" });
+      pendingUpload = uploadFile(
+        youtube, item.outputPath, item.outputName, config, uploaded,
+        (pct, speed, eta) => updateUpload(idx, { status: "active", pct, speed, eta })
+      )
+        .then((videoId) => {
+          const elapsed = ((Date.now() - uploadStart) / 1000).toFixed(1);
+          updateUpload(idx, { status: "done", url: `https://youtu.be/${videoId}`, elapsed: `${elapsed}s` });
+        })
+        .catch((err) => {
+          updateUpload(idx, { status: "error", message: err.message });
+        });
     }
-
-    log("");
   }
 
   // Wait for final upload
@@ -396,7 +431,7 @@ async function main() {
     await pendingUpload;
   }
 
-  clearStatus();
+  stopDashboard();
   console.log("\nAll done!");
 }
 

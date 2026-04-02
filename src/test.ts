@@ -307,7 +307,9 @@ async function main() {
       },
     },
     {
-      onUploadProgress: createProgressTracker(fileSize),
+      onUploadProgress: createProgressTracker(fileSize, (pct, speed, eta) => {
+        process.stdout.write(`\r\x1b[K  upload ${pct.toFixed(1)}% ${speed} ETA ${eta}`);
+      }),
     }
   );
   process.stdout.write("\n");

@@ -1,5 +1,3 @@
-import { setUpload } from "./status-line.js";
-
 const WINDOW_SECONDS = 5;
 
 interface Sample {
@@ -7,9 +5,11 @@ interface Sample {
   bytes: number;
 }
 
-export function createProgressTracker(fileSize: number) {
+export function createProgressTracker(
+  fileSize: number,
+  onProgress: (pct: number, speed: string, eta: string) => void
+) {
   const samples: Sample[] = [];
-  const totalMb = (fileSize / 1024 / 1024).toFixed(1);
 
   return (evt: { bytesRead: number }) => {
     const now = Date.now();
@@ -21,8 +21,7 @@ export function createProgressTracker(fileSize: number) {
       samples.shift();
     }
 
-    const pct = ((evt.bytesRead / fileSize) * 100).toFixed(1);
-    const mb = (evt.bytesRead / 1024 / 1024).toFixed(1);
+    const pct = (evt.bytesRead / fileSize) * 100;
 
     let speedStr = "---";
     let etaStr = "---";
@@ -49,6 +48,6 @@ export function createProgressTracker(fileSize: number) {
       }
     }
 
-    setUpload(`upload ${pct}% ${mb}/${totalMb} MB ${speedStr} ETA ${etaStr}`);
+    onProgress(pct, speedStr, etaStr);
   };
 }
