@@ -1,5 +1,6 @@
+import { videoEncodeArgs, videoLevel } from "./encoder.js";
 import { execFile } from "node:child_process";
-import { readdir, unlink, stat } from "node:fs/promises";
+import { readdir, unlink, stat, rename } from "node:fs/promises";
 import path from "node:path";
 import { createReadStream, existsSync } from "node:fs";
 import http from "node:http";
@@ -65,11 +66,9 @@ function runFfmpeg(inputPath: string, outputPath: string, startTime: number): Pr
       "-i", inputPath,
       "-t", CLIP_DURATION.toString(),
       "-vf", "crop=2560:1440:640:80",
-      "-c:v", "libx264",
-      "-preset", "slow",
-      "-crf", "18",
+      ...videoEncodeArgs,
       "-profile:v", "high",
-      "-level", "4.2",
+      "-level", videoLevel,
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
       "-b:a", "192k",
@@ -231,7 +230,14 @@ async function main() {
   const outputPath = path.join(OUTPUT_DIR, testOutputName);
 
   const encodeStart = Date.now();
-  await runFfmpeg(inputPath, outputPath, startTime);
+  const tmpPath = outputPath + ".tmp.mp4";
+  try {
+    await runFfmpeg(inputPath, tmpPath, startTime);
+    await rename(tmpPath, outputPath);
+  } catch (err) {
+    await unlink(tmpPath).catch(() => {});
+    throw err;
+  }
   const encodeElapsed = ((Date.now() - encodeStart) / 1000).toFixed(1);
   console.log(`  Encoded in ${encodeElapsed}s → ${testOutputName}\n`);
 

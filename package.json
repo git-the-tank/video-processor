@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "process": "tsx src/process.ts",
+    "process:cpu": "ENCODE_CPU=1 tsx src/process.ts",
     "upload": "tsx src/upload.ts",
     "test": "tsx src/test.ts",
-    "all": "tsx src/all.ts"
+    "test:cpu": "ENCODE_CPU=1 tsx src/test.ts",
+    "all": "tsx src/all.ts",
+    "all:cpu": "ENCODE_CPU=1 tsx src/all.ts"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

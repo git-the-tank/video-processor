@@ -1,17 +1,19 @@
 import { execFile } from "node:child_process";
-import { readFile, writeFile, readdir, access, stat } from "node:fs/promises";
+import { readFile, writeFile, readdir, access, stat, rename, unlink } from "node:fs/promises";
 import { createReadStream, existsSync } from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { URL } from "node:url";
 import readline from "node:readline/promises";
 import { google } from "googleapis";
+import { videoEncodeArgs, videoLevel } from "./encoder.js";
 import {
   parseFilename,
   generateTitle,
   generateDescription,
 } from "./parse-filename.js";
 import { createProgressTracker } from "./upload-progress.js";
+import { setEncode, setUpload, startStatus, clearStatus, log } from "./status-line.js";
 
 const INPUT_DIR = path.resolve("input");
 const OUTPUT_DIR = path.resolve("output");
@@ -69,11 +71,9 @@ function runFfmpeg(inputPath: string, outputPath: string): Promise<void> {
     const args = [
       "-i", inputPath,
       "-vf", "crop=2560:1440:640:80",
-      "-c:v", "libx264",
-      "-preset", "slow",
-      "-crf", "18",
+      ...videoEncodeArgs,
       "-profile:v", "high",
-      "-level", "4.2",
+      "-level", videoLevel,
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
       "-b:a", "192k",
@@ -87,12 +87,16 @@ function runFfmpeg(inputPath: string, outputPath: string): Promise<void> {
     proc.stderr?.on("data", (data: Buffer) => {
       const line = data.toString().trim();
       if (line.startsWith("frame=")) {
-        process.stdout.write(`\r  [encode] ${line.slice(0, 80)}`);
+        const timeMatch = line.match(/time=(\S+)/);
+        const speedMatch = line.match(/speed=(\S+)/);
+        const time = timeMatch?.[1] ?? "?";
+        const speed = speedMatch?.[1] ?? "?";
+        setEncode(`encode ${time} @ ${speed}`);
       }
     });
 
     proc.on("close", (code) => {
-      process.stdout.write("\n");
+      setEncode("");
       if (code === 0) resolve();
       else reject(new Error(`ffmpeg exited with code ${code}`));
     });
@@ -227,7 +231,8 @@ async function uploadFile(
     description = "";
   }
 
-  console.log(`  [upload] ${title}`);
+  log(`  [upload] ${title}`);
+  setUpload("upload starting...");
 
   const fileSize = (await stat(filePath)).size;
   const res = await youtube.videos.insert(
@@ -253,8 +258,7 @@ async function uploadFile(
       onUploadProgress: createProgressTracker(fileSize),
     }
   );
-  process.stdout.write("\n");
-
+  setUpload("");
   const videoId = res.data.id!;
 
   if (config.playlistId) {
@@ -271,7 +275,7 @@ async function uploadFile(
 
   uploaded[outputName] = { videoId, uploadedAt: new Date().toISOString() };
   await saveJson(UPLOADED_PATH, uploaded);
-  console.log(`  Uploaded: https://youtu.be/${videoId}`);
+  log(`  Uploaded: https://youtu.be/${videoId}`);
 }
 
 // --- Main pipeline ---
@@ -339,6 +343,7 @@ async function main() {
   const uploadCount = work.filter((w) => w.needsUpload).length;
   console.log(`Pipeline: ${work.length} file(s) — ${encodeCount} to encode, ${uploadCount} to upload\n`);
 
+  startStatus();
   let pendingUpload: Promise<void> | null = null;
   let processedCount = 0;
 
@@ -350,16 +355,23 @@ async function main() {
       ? `${meta.difficulty} ${meta.encounterName} (${meta.result})`
       : item.inputFile;
 
-    console.log(`${label} ${displayName}`);
+    log(`${label} ${displayName}`);
 
     // Encode if needed
     if (item.needsEncode) {
       const start = Date.now();
-      await runFfmpeg(item.inputPath, item.outputPath);
+      const tmpPath = item.outputPath + ".tmp.mp4";
+      try {
+        await runFfmpeg(item.inputPath, tmpPath);
+        await rename(tmpPath, item.outputPath);
+      } catch (err) {
+        await unlink(tmpPath).catch(() => {});
+        throw err;
+      }
       const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-      console.log(`  Encoded in ${elapsed}s`);
+      log(`  Encoded in ${elapsed}s`);
     } else {
-      console.log(`  Already encoded`);
+      log(`  Already encoded`);
     }
 
     // Wait for any previous upload to finish before starting the next one
@@ -371,12 +383,12 @@ async function main() {
     // Start upload in background (runs while next encode happens)
     if (item.needsUpload && youtube) {
       pendingUpload = uploadFile(youtube, item.outputPath, item.outputName, config, uploaded)
-        .catch((err) => console.error(`  Upload error: ${err.message}`));
+        .catch((err) => log(`  Upload error: ${err.message}`));
     } else if (!item.needsUpload) {
-      console.log(`  Already uploaded`);
+      log(`  Already uploaded`);
     }
 
-    console.log("");
+    log("");
   }
 
   // Wait for final upload
@@ -384,6 +396,7 @@ async function main() {
     await pendingUpload;
   }
 
+  clearStatus();
   console.log("\nAll done!");
 }
 

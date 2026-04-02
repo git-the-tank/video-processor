@@ -1,3 +1,5 @@
+import { setUpload } from "./status-line.js";
+
 const WINDOW_SECONDS = 5;
 
 interface Sample {
@@ -47,8 +49,6 @@ export function createProgressTracker(fileSize: number) {
       }
     }
 
-    process.stdout.write(
-      `\r  Uploading: ${mb}/${totalMb} MB (${pct}%) | ${speedStr} | ETA: ${etaStr}   `
-    );
+    setUpload(`upload ${pct}% ${mb}/${totalMb} MB ${speedStr} ETA ${etaStr}`);
   };
 }

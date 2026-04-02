@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
-import { readdir, access } from "node:fs/promises";
+import { readdir, access, rename, unlink } from "node:fs/promises";
 import path from "node:path";
+import { videoEncodeArgs, videoLevel } from "./encoder.js";
 import { parseFilename } from "./parse-filename.js";
 
 const INPUT_DIR = path.resolve("input");
@@ -21,11 +22,9 @@ function runFfmpeg(inputPath: string, outputPath: string): Promise<void> {
     const args = [
       "-i", inputPath,
       "-vf", "crop=2560:1440:640:80",
-      "-c:v", "libx264",
-      "-preset", "slow",
-      "-crf", "18",
+      ...videoEncodeArgs,
       "-profile:v", "high",
-      "-level", "4.2",
+      "-level", videoLevel,
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
       "-b:a", "192k",
@@ -93,7 +92,14 @@ async function main() {
 
     try {
       const start = Date.now();
-      await runFfmpeg(inputPath, outputPath);
+      const tmpPath = outputPath + ".tmp.mp4";
+      try {
+        await runFfmpeg(inputPath, tmpPath);
+        await rename(tmpPath, outputPath);
+      } catch (err) {
+        await unlink(tmpPath).catch(() => {});
+        throw err;
+      }
       const elapsed = ((Date.now() - start) / 1000).toFixed(1);
       console.log(`  Done in ${elapsed}s → ${outputName}\n`);
       processed++;
