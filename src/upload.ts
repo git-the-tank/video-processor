@@ -175,12 +175,13 @@ async function uploadVideo(
   title: string,
   description: string,
   config: Config,
-  playlistId: string
+  playlistId: string,
+  recordingDate?: Date
 ): Promise<string> {
   const fileSize = (await stat(filePath)).size;
   const res = await youtube.videos.insert(
     {
-      part: ["snippet", "status"],
+      part: ["snippet", "status", ...(recordingDate ? ["recordingDetails"] : [])],
       requestBody: {
         snippet: {
           title,
@@ -192,6 +193,9 @@ async function uploadVideo(
           privacyStatus: config.privacy,
           selfDeclaredMadeForKids: config.madeForKids,
         },
+        ...(recordingDate && {
+          recordingDetails: { recordingDate: recordingDate.toISOString() },
+        }),
       },
       media: {
         body: createReadStream(filePath),
@@ -319,7 +323,8 @@ async function main() {
         title,
         description,
         config,
-        config.playlistId
+        config.playlistId,
+        meta?.date
       );
 
       uploaded[file] = { videoId, uploadedAt: new Date().toISOString() };

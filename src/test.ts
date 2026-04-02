@@ -304,9 +304,10 @@ async function main() {
 
   console.log("Uploading...");
   const fileSize = (await stat(outputPath)).size;
+  const recordingDate = meta?.date;
   const res = await youtube.videos.insert(
     {
-      part: ["snippet", "status"],
+      part: ["snippet", "status", ...(recordingDate ? ["recordingDetails"] : [])],
       requestBody: {
         snippet: {
           title,
@@ -318,6 +319,9 @@ async function main() {
           privacyStatus: config.privacy,
           selfDeclaredMadeForKids: config.madeForKids,
         },
+        ...(recordingDate && {
+          recordingDetails: { recordingDate: recordingDate.toISOString() },
+        }),
       },
       media: {
         body: createReadStream(outputPath),
