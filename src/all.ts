@@ -13,6 +13,7 @@ import {
   generateDescription,
 } from "./parse-filename.js";
 import { createProgressTracker } from "./upload-progress.js";
+import { getChapters, formatChapters, type WclConfig } from "./wcl.js";
 import {
   initDashboard,
   updateEncode,
@@ -24,7 +25,6 @@ import {
 const INPUT_DIR = path.resolve("input");
 const OUTPUT_DIR = path.resolve("output");
 const CONFIG_PATH = path.resolve("config.json");
-const CLIENT_SECRET_PATH = path.resolve("client_secret.json");
 const TOKEN_PATH = path.resolve("token.json");
 const UPLOADED_PATH = path.resolve("uploaded.json");
 const CHANNEL_PATH = path.resolve("channel.json");
@@ -42,6 +42,7 @@ interface Config {
   madeForKids: boolean;
   category: string;
   tags: string[];
+  wcl?: WclConfig;
 }
 
 interface UploadRecord {
@@ -117,11 +118,12 @@ function runFfmpeg(
 // --- YouTube auth ---
 
 async function authorize(): Promise<InstanceType<typeof google.auth.OAuth2>> {
-  const credentials = await loadJson<{
-    installed: { client_id: string; client_secret: string };
-  }>(CLIENT_SECRET_PATH);
+  const client_id = process.env.GOOGLE_CLIENT_ID;
+  const client_secret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!client_id || !client_secret) {
+    throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in .env");
+  }
 
-  const { client_id, client_secret } = credentials.installed;
   const oauth2Client = new google.auth.OAuth2(
     client_id,
     client_secret,
@@ -235,7 +237,16 @@ async function uploadFile(
 
   if (meta) {
     title = generateTitle(meta, config);
-    description = generateDescription(meta, config);
+    let chaptersText: string | undefined;
+    if (config.wcl) {
+      try {
+        const markers = await getChapters(config.wcl, meta);
+        if (markers) chaptersText = formatChapters(markers);
+      } catch (err) {
+        console.warn(`WCL chapter lookup failed: ${err}`);
+      }
+    }
+    description = generateDescription(meta, config, chaptersText);
   } else {
     title = path.basename(outputName, ".mp4");
     description = "";
@@ -291,12 +302,12 @@ async function main() {
 
   // Auth upfront so we don't hit a prompt mid-pipeline
   let youtube: ReturnType<typeof google.youtube> | null = null;
-  if (existsSync(CLIENT_SECRET_PATH)) {
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     const auth = await authorize();
     youtube = google.youtube({ version: "v3", auth });
     await selectChannel(youtube);
   } else {
-    console.log("No client_secret.json — will process only, no uploads.\n");
+    console.log("No Google credentials in .env — will process only, no uploads.\n");
   }
 
   const uploaded = await loadUploaded();

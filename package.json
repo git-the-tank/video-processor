@@ -5,11 +5,13 @@
   "scripts": {
     "process": "tsx src/process.ts",
     "process:cpu": "ENCODE_CPU=1 tsx src/process.ts",
-    "upload": "tsx src/upload.ts",
-    "test": "tsx src/test.ts",
-    "test:cpu": "ENCODE_CPU=1 tsx src/test.ts",
-    "all": "tsx src/all.ts",
-    "all:cpu": "ENCODE_CPU=1 tsx src/all.ts"
+    "upload": "node --env-file=.env --import=tsx src/upload.ts",
+    "test": "node --env-file=.env --import=tsx src/test.ts",
+    "test:cpu": "ENCODE_CPU=1 node --env-file=.env --import=tsx src/test.ts",
+    "all": "node --env-file=.env --import=tsx src/all.ts",
+    "all:cpu": "ENCODE_CPU=1 node --env-file=.env --import=tsx src/all.ts",
+    "chapters": "node --env-file=.env --import=tsx src/chapters.ts",
+    "test:google": "node --env-file=.env --import=tsx src/test-google.ts"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

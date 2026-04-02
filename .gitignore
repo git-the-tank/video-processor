@@ -2,7 +2,8 @@ node_modules/
 dist/
 .claude/
 
-# OAuth credentials
+# Secrets
+.env
 client_secret.json
 token.json
 

@@ -69,7 +69,13 @@ Guild info, YouTube defaults, playlist ID. Privacy defaults to `private`. Playli
 - `uploaded.json` — maps filenames to YouTube video IDs. Delete an entry to re-upload.
 - `channel.json` — saved YouTube channel selection. Delete to re-pick.
 - `token.json` — OAuth token. Delete to re-authorize. Expires every 7 days in Google Cloud "Testing" mode.
-- `client_secret.json` — OAuth credentials from Google Cloud Console.
+- `client_secret.json` — Legacy Google OAuth file, no longer read. Safe to delete.
+
+## Secrets (`.env`)
+All API credentials live in `.env` at the project root. This file is gitignored.
+- **NEVER** read, edit, write, or display `.env` in conversation. Do not use tools to access it.
+- Scripts read from `process.env` at runtime. Tell the user which env vars to set — never handle the values yourself.
+- Variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `WCL_CLIENT_ID`, `WCL_CLIENT_SECRET`
 
 ## Runtime
 - Node 24, pnpm, TypeScript via tsx

@@ -9,5 +9,10 @@
   "privacy": "private",
   "madeForKids": false,
   "category": "20",
-  "tags": ["World of Warcraft", "WoW", "Gaming", "Prot Warrior", "Tank"]
+  "tags": ["World of Warcraft", "WoW", "Gaming", "Prot Warrior", "Tank"],
+  "wcl": {
+    "guildName": "Lusting on Trash",
+    "serverSlug": "area-52",
+    "serverRegion": "us"
+  }
 }

@@ -11,10 +11,10 @@ import {
   generateDescription,
 } from "./parse-filename.js";
 import { createProgressTracker } from "./upload-progress.js";
+import { getChapters, formatChapters, type WclConfig } from "./wcl.js";
 
 const OUTPUT_DIR = path.resolve("output");
 const CONFIG_PATH = path.resolve("config.json");
-const CLIENT_SECRET_PATH = path.resolve("client_secret.json");
 const TOKEN_PATH = path.resolve("token.json");
 const UPLOADED_PATH = path.resolve("uploaded.json");
 const CHANNEL_PATH = path.resolve("channel.json");
@@ -31,6 +31,7 @@ interface Config {
   madeForKids: boolean;
   category: string;
   tags: string[];
+  wcl?: WclConfig;
 }
 
 interface UploadRecord {
@@ -52,11 +53,12 @@ async function loadUploaded(): Promise<UploadRecord> {
 
 // OAuth2 flow: opens browser, listens on localhost for callback
 async function authorize(): Promise<InstanceType<typeof google.auth.OAuth2>> {
-  const credentials = await loadJson<{
-    installed: { client_id: string; client_secret: string; redirect_uris: string[] };
-  }>(CLIENT_SECRET_PATH);
+  const client_id = process.env.GOOGLE_CLIENT_ID;
+  const client_secret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!client_id || !client_secret) {
+    throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in .env");
+  }
 
-  const { client_id, client_secret } = credentials.installed;
   const oauth2Client = new google.auth.OAuth2(
     client_id,
     client_secret,
@@ -241,14 +243,11 @@ async function main() {
   const config = await loadJson<Config>(CONFIG_PATH);
 
   // Check for credentials
-  if (!existsSync(CLIENT_SECRET_PATH)) {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
     console.error(
-      "client_secret.json not found.\n" +
-        "Set up OAuth credentials:\n" +
-        "1. Go to https://console.cloud.google.com/\n" +
-        "2. Create a project and enable YouTube Data API v3\n" +
-        "3. Create OAuth 2.0 credentials (Desktop app)\n" +
-        "4. Download as client_secret.json in the project root"
+      "Google credentials not found in .env.\n" +
+        "Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your .env file.\n" +
+        "Get these from https://console.cloud.google.com/ (OAuth 2.0 Desktop app credentials)"
     );
     process.exit(1);
   }
@@ -294,7 +293,16 @@ async function main() {
 
     if (meta) {
       title = generateTitle(meta, config);
-      description = generateDescription(meta, config);
+      let chaptersText: string | undefined;
+      if (config.wcl) {
+        try {
+          const markers = await getChapters(config.wcl, meta);
+          if (markers) chaptersText = formatChapters(markers);
+        } catch (err) {
+          console.warn(`WCL chapter lookup failed: ${err}`);
+        }
+      }
+      description = generateDescription(meta, config, chaptersText);
     } else {
       title = path.basename(file, ".mp4");
       description = "";

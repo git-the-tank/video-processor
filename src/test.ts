@@ -14,11 +14,11 @@ import {
   generateDescription,
 } from "./parse-filename.js";
 import { createProgressTracker } from "./upload-progress.js";
+import { getChapters, formatChapters, type WclConfig } from "./wcl.js";
 
 const INPUT_DIR = path.resolve("input");
 const OUTPUT_DIR = path.resolve("output");
 const CONFIG_PATH = path.resolve("config.json");
-const CLIENT_SECRET_PATH = path.resolve("client_secret.json");
 const TOKEN_PATH = path.resolve("token.json");
 const CHANNEL_PATH = path.resolve("channel.json");
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mkv", ".avi", ".mov", ".ts"]);
@@ -36,6 +36,7 @@ interface Config {
   madeForKids: boolean;
   category: string;
   tags: string[];
+  wcl?: WclConfig;
 }
 
 async function loadJson<T>(filepath: string): Promise<T> {
@@ -98,11 +99,12 @@ function runFfmpeg(inputPath: string, outputPath: string, startTime: number): Pr
 }
 
 async function authorize(): Promise<InstanceType<typeof google.auth.OAuth2>> {
-  const credentials = await loadJson<{
-    installed: { client_id: string; client_secret: string };
-  }>(CLIENT_SECRET_PATH);
+  const client_id = process.env.GOOGLE_CLIENT_ID;
+  const client_secret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!client_id || !client_secret) {
+    throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in .env");
+  }
 
-  const { client_id, client_secret } = credentials.installed;
   const oauth2Client = new google.auth.OAuth2(
     client_id,
     client_secret,
@@ -249,7 +251,22 @@ async function main() {
 
   if (meta) {
     title = `[TEST] ${generateTitle(meta, config)}`;
-    description = generateDescription(meta, config);
+    let chaptersText: string | undefined;
+    if (config.wcl) {
+      try {
+        console.log("Querying Warcraftlogs for chapters...");
+        const markers = await getChapters(config.wcl, meta);
+        if (markers) {
+          chaptersText = formatChapters(markers);
+          console.log(`Found ${markers.length} chapters\n`);
+        } else {
+          console.log("No chapters found\n");
+        }
+      } catch (err) {
+        console.warn(`WCL chapter lookup failed: ${err}\n`);
+      }
+    }
+    description = generateDescription(meta, config, chaptersText);
   } else {
     title = `[TEST] ${path.basename(sourceFile, path.extname(sourceFile))}`;
     description = "Test upload";
@@ -263,8 +280,8 @@ async function main() {
   console.log("--------------------------------\n");
 
   // Step 5: Ask to proceed with upload
-  if (!existsSync(CLIENT_SECRET_PATH)) {
-    console.log("Skipping upload — client_secret.json not found.");
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    console.log("Skipping upload — Google credentials not in .env.");
     console.log(`Test clip saved to: ${outputPath}`);
     return;
   }
