@@ -65,7 +65,7 @@ function runFfmpeg(inputPath: string, outputPath: string, startTime: number): Pr
       "-ss", startTime.toString(),
       "-i", inputPath,
       "-t", CLIP_DURATION.toString(),
-      "-vf", "crop=2560:1440:640:80",
+      "-vf", "crop=2844:1600:498:0,scale=2560:1440",
       ...videoEncodeArgs,
       "-profile:v", "high",
       "-level", videoLevel,

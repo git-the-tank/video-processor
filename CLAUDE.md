@@ -33,8 +33,8 @@ src/
 
 ## Video Settings
 - **Source:** 3840x1600 @ 60fps (ultrawide WoW recordings)
-- **Output:** 2560x1440 (1440p) center crop — `crop=2560:1440:640:80`
-- **Codec:** H.264 High profile, Level 4.2, CRF 18, slow preset
+- **Output:** 2560x1440 (1440p) — crop sides + scale height: `crop=2844:1600:498:0,scale=2560:1440`
+- **Codec:** H.264 High profile, Level 5.1 (GPU) / 4.2 (CPU), CQ/CRF 18
 - **Audio:** AAC 192kbps
 - **Container:** MP4 with faststart
 

@@ -70,7 +70,7 @@ function runFfmpeg(inputPath: string, outputPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const args = [
       "-i", inputPath,
-      "-vf", "crop=2560:1440:640:80",
+      "-vf", "crop=2844:1600:498:0,scale=2560:1440",
       ...videoEncodeArgs,
       "-profile:v", "high",
       "-level", videoLevel,
