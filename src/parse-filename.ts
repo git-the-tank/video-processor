@@ -52,6 +52,29 @@ export function generateTitle(
   return `${meta.difficulty} ${meta.encounterName} - ${config.guild} - ${config.role}`;
 }
 
+export interface RaidConfig {
+  tags: string[];
+  bosses: string[];
+}
+
+export function generateTags(
+  baseTags: string[],
+  meta: VideoMetadata | null,
+  raids?: Record<string, RaidConfig>
+): string[] {
+  if (!meta) return baseTags;
+  const tags = [...baseTags, meta.encounterName, meta.difficulty];
+  if (raids) {
+    for (const raid of Object.values(raids)) {
+      if (raid.bosses.includes(meta.encounterName)) {
+        tags.push(...raid.tags);
+        break;
+      }
+    }
+  }
+  return [...new Set(tags)];
+}
+
 export function generateDescription(
   meta: VideoMetadata,
   config: {

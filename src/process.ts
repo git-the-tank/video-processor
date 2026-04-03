@@ -1,58 +1,8 @@
-import { execFile } from "node:child_process";
-import { readdir, access, rename, unlink } from "node:fs/promises";
+import { readdir, rename, unlink } from "node:fs/promises";
 import path from "node:path";
-import { videoEncodeArgs, videoLevel } from "./encoder.js";
 import { parseFilename } from "./parse-filename.js";
-
-const INPUT_DIR = path.resolve("input");
-const OUTPUT_DIR = path.resolve("output");
-const VIDEO_EXTENSIONS = new Set([".mp4", ".mkv", ".avi", ".mov", ".ts"]);
-
-async function fileExists(filepath: string): Promise<boolean> {
-  try {
-    await access(filepath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function runFfmpeg(inputPath: string, outputPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const args = [
-      "-i", inputPath,
-      "-vf", "crop=2844:1600:498:0,scale=2560:1440",
-      ...videoEncodeArgs,
-      "-profile:v", "high",
-      "-level", videoLevel,
-      "-pix_fmt", "yuv420p",
-      "-c:a", "aac",
-      "-b:a", "192k",
-      "-movflags", "+faststart",
-      "-y",
-      outputPath,
-    ];
-
-    console.log(`  ffmpeg encoding...`);
-    const proc = execFile("ffmpeg", args, { maxBuffer: 10 * 1024 * 1024 });
-
-    proc.stderr?.on("data", (data: Buffer) => {
-      const line = data.toString().trim();
-      // Show progress lines (frame= ...)
-      if (line.startsWith("frame=")) {
-        process.stdout.write(`\r  ${line.slice(0, 80)}`);
-      }
-    });
-
-    proc.on("close", (code) => {
-      process.stdout.write("\n");
-      if (code === 0) resolve();
-      else reject(new Error(`ffmpeg exited with code ${code}`));
-    });
-
-    proc.on("error", reject);
-  });
-}
+import { runEncode } from "./ffmpeg.js";
+import { INPUT_DIR, OUTPUT_DIR, VIDEO_EXTENSIONS, fileExists } from "./config.js";
 
 async function main() {
   const entries = await readdir(INPUT_DIR);
@@ -94,7 +44,8 @@ async function main() {
       const start = Date.now();
       const tmpPath = outputPath + ".tmp.mp4";
       try {
-        await runFfmpeg(inputPath, tmpPath);
+        console.log(`  ffmpeg encoding...`);
+        await runEncode(inputPath, tmpPath);
         await rename(tmpPath, outputPath);
       } catch (err) {
         await unlink(tmpPath).catch(() => {});

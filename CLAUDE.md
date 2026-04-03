@@ -16,12 +16,21 @@ Automated pipeline for cropping ultrawide WoW recordings to 16:9 and uploading t
 
 ```
 src/
-├── all.ts              # Pipelined process + upload (main entry point)
+  Entry points:
+├── all.ts              # Pipelined encode + upload with dashboard UI
 ├── process.ts          # Standalone encode script
-├── upload.ts           # Standalone upload script
-├── test.ts             # Test mode (15s clip + optional upload)
-├── parse-filename.ts   # Filename regex parser + YouTube metadata generators
-└── upload-progress.ts  # Rolling-window upload speed/ETA tracker
+├── upload.ts           # Standalone upload script (per-video preview + confirm)
+���── test.ts             # Test mode (15s clip + optional upload)
+├── chapters.ts         # Retroactive WCL chapter updates on uploaded videos
+  Shared modules:
+├── config.ts           # Types (Config, UploadRecord), paths, JSON/file helpers
+├── youtube.ts          # OAuth, channel selection, upload, metadata preview
+├── ffmpeg.ts           # Video encoding (full + clip) and duration query
+���── parse-filename.ts   # Filename regex parser + YouTube metadata generators
+├── encoder.ts          # GPU/CPU codec selection (NVENC vs libx264)
+├── upload-progress.ts  # Rolling-window upload speed/ETA tracker
+├── dashboard.ts        # Terminal dashboard for pipeline progress
+└── wcl.ts              # Warcraftlogs API client for chapter markers
 ```
 
 ### Pipeline behavior (`pnpm run all`)
@@ -29,7 +38,8 @@ src/
 - They overlap: V1 uploads while V2 encodes
 - Skips files already encoded (exist in `output/`) or already uploaded (in `uploaded.json`)
 - Files in `output/` with no `uploaded.json` record are uploaded without re-encoding (retry behavior)
-- Works without YouTube credentials (encode-only mode if no `client_secret.json`)
+- Works without YouTube credentials (encode-only mode if no credentials in `.env`)
+- Shows metadata preview with confirm prompt before starting
 
 ## Video Settings
 - **Source:** 3840x1600 @ 60fps (ultrawide WoW recordings)
